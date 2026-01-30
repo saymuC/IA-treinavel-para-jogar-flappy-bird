@@ -1728,7 +1728,7 @@ def train_dqn(episodes: int, max_steps: int, backend: str = "auto", use_enhanced
             print(f"ep {ep:4d} score {env.score:3d} best {best_score:3d} avg {avg_score:5.1f} "
                   f"eps {agent.epsilon:.3f} loss {loss_str} gap {PIPE_GAP:.0f} speed {PIPE_SPEED:.0f} dev {device_name}")
 
-    # Garantir que o modelo final salve o melhor desempenho alcançado
+    # Garantir que o modelo final salve o melhor desempenho alcan?ado
     if hasattr(agent, "best_net") and hasattr(agent, "net"):
         if isinstance(agent.best_net, DuelingDQNNet):
             best_weights = agent.best_net.get_weights()
