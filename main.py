@@ -1633,30 +1633,38 @@ def load_dqn(path: str, backend: str = "auto", use_enhanced: bool = True):
         require_numpy()
         agent = DQNAgent(tuple(layers))
     
-    weights, biases = data["weights"]
-    
-    # Adaptar carregamento para Dueling DQN
-    if use_dueling and isinstance(weights, dict):
-        agent.net.set_weights(weights)
-        agent.target_net.set_weights(weights)
+    weights_data = data["weights"]
+
+    # Carregar pesos com suporte a Dueling DQN (dict) e formato antigo (tuple)
+    if isinstance(weights_data, dict):
+        if isinstance(agent.net, DuelingDQNNet):
+            agent.net.set_weights(weights_data)
+            agent.target_net.set_weights(weights_data)
+        else:
+            raise SystemExit(
+                "Modelo salvo com Dueling DQN. Rode com --nn-backend numpy/auto "
+                "e --use-enhanced, ou treine novamente."
+            )
     else:
-        # Compatibilidade com formato antigo
-        if hasattr(agent.net, 'set_weights'):
-            if isinstance(agent.net, DuelingDQNNet):
-                # Converter formato antigo para dueling (se possível)
-                pass  # Pode adicionar lógica de conversão aqui
-            else:
-                agent.net.set_weights(weights, biases)
-                agent.target_net.set_weights(weights, biases)
-    
+        weights, biases = weights_data
+        if isinstance(agent.net, DuelingDQNNet):
+            raise SystemExit(
+                "Modelo salvo em formato antigo (sem Dueling). "
+                "Desative --use-enhanced ou treine novamente."
+            )
+        agent.net.set_weights(weights, biases)
+        agent.target_net.set_weights(weights, biases)
+
     best = data.get("best_weights")
     if best is not None and hasattr(agent, "best_net"):
-        if isinstance(best, dict) and use_dueling:
-            agent.best_net.set_weights(best)
-        elif not isinstance(best, dict):
+        if isinstance(best, dict):
+            if isinstance(agent.best_net, DuelingDQNNet):
+                agent.best_net.set_weights(best)
+        else:
             best_w, best_b = best
-            agent.best_net.set_weights(best_w, best_b)
-    
+            if not isinstance(agent.best_net, DuelingDQNNet):
+                agent.best_net.set_weights(best_w, best_b)
+
     agent.epsilon = 0.0
     return agent
 
@@ -1719,6 +1727,17 @@ def train_dqn(episodes: int, max_steps: int, backend: str = "auto", use_enhanced
             avg_score = sum(score_history[-50:]) / min(50, len(score_history))
             print(f"ep {ep:4d} score {env.score:3d} best {best_score:3d} avg {avg_score:5.1f} "
                   f"eps {agent.epsilon:.3f} loss {loss_str} gap {PIPE_GAP:.0f} speed {PIPE_SPEED:.0f} dev {device_name}")
+
+    # Garantir que o modelo final salve o melhor desempenho alcançado
+    if hasattr(agent, "best_net") and hasattr(agent, "net"):
+        if isinstance(agent.best_net, DuelingDQNNet):
+            best_weights = agent.best_net.get_weights()
+            agent.net.set_weights(best_weights)
+            agent.target_net.set_weights(best_weights)
+        else:
+            best_w, best_b = agent.best_net.get_weights()
+            agent.net.set_weights(best_w, best_b)
+            agent.target_net.set_weights(best_w, best_b)
 
     return agent
 
@@ -2382,6 +2401,8 @@ def main() -> None:
                 else:
                     print("Modelo DQN nao encontrado. Rode --nn-train primeiro.")
                     return
+        if args.nn_play and not args.nn_learn and hasattr(nn_agent, "use_best"):
+            nn_agent.use_best = True
         game = FlappyGame(ai_agent=nn_agent)
         if args.nn_learn:
             game.ai_train = True
